@@ -1,188 +1,81 @@
-"use strict";
+const basePath = process.cwd();
+const { MODE } = require(`${basePath}/constants/blend_mode.js`);
+const { NETWORK } = require(`${basePath}/constants/network.js`);
 
-const path = require("path");
-const isLocal = typeof process.pkg === "undefined";
-const basePath = isLocal ? process.cwd() : path.dirname(process.execPath);
-const { MODE } = require(path.join(basePath, "src/blendMode.js"));
-const description =
-  "This is the description of your NFT project, remember to replace this";
+const network = NETWORK.eth;
+
+// General metadata for Ethereum
+const namePrefix = "Your Collection";
+const description = "Remember to replace this description";
 const baseUri = "ipfs://NewUriToReplace";
 
+const solanaMetadata = {
+  symbol: "YC",
+  seller_fee_basis_points: 1000, // Define how much % you want from secondary market sales 1000 = 10%
+  external_url: "https://www.youtube.com/c/hashlipsnft",
+  creators: [
+    {
+      address: "7fXNuer5sbZtaTEPhtJ5g5gNtuyRoKkvxdjEjEnPN4mC",
+      share: 100,
+    },
+  ],
+};
+
+// If you have selected Solana then the collection starts from 0 automatically
 const layerConfigurations = [
-  // White BG
   {
-    growEditionSizeTo: 34,
+    growEditionSizeTo: 50,
     layersOrder: [
-      { name: "background_white" },
-      { name: "face" }
-    ],
-  },
-  {
-    growEditionSizeTo: 43, // 9
-    layersOrder: [
-      { name: "background_white" },
-      { name: "face" },
-      { name: "lady_hat" }
-    ],
-  },
-  {
-    growEditionSizeTo: 48, // 5
-    layersOrder: [
-      { name: "background_white" },
-      { name: "face" },
-      { name: "glasses" }
-    ],
-  },
-  {
-    growEditionSizeTo: 49, // 1
-    layersOrder: [
-      { name: "background_white" },
-      { name: "face" },
-      { name: "top_hat" }
-    ],
-  },
-  // Red BG
-  {
-    growEditionSizeTo: 68, // 19
-    layersOrder: [
-      { name: "background_red" },
-      { name: "face" }
-    ],
-  },
-  {
-    growEditionSizeTo: 73, // 5
-    layersOrder: [
-      { name: "background_red" },
-      { name: "face" },
-      { name: "lady_hat" }
-    ],
-  },
-  {
-    growEditionSizeTo: 75, // 2
-    layersOrder: [
-      { name: "background_red" },
-      { name: "face" },
-      { name: "glasses" }
-    ],
-  },
-  {
-    growEditionSizeTo: 76, // 1
-    layersOrder: [
-      { name: "background_red" },
-      { name: "face" },
-      { name: "top_hat" }
-    ],
-  },
-  // Green BG
-  {
-    growEditionSizeTo: 95, // 19
-    layersOrder: [
-      { name: "background_green" },
-      { name: "face" }
-    ],
-  },
-  {
-    growEditionSizeTo: 100, // 5
-    layersOrder: [
-      { name: "background_green" },
-      { name: "face" },
-      { name: "lady_hat" }
-    ],
-  },
-  {
-    growEditionSizeTo: 102, // 2
-    layersOrder: [
-      { name: "background_green" },
-      { name: "face" },
-      { name: "glasses" }
-    ],
-  },
-  {
-    growEditionSizeTo: 103, // 1
-    layersOrder: [
-      { name: "background_green" },
-      { name: "face" },
-      { name: "top_hat" }
-    ],
-  },
-  // Blue BG
-  {
-    growEditionSizeTo: 122, // 19
-    layersOrder: [
-      { name: "background_blue" },
-      { name: "face" }
-    ],
-  },
-  {
-    growEditionSizeTo: 127, // 5
-    layersOrder: [
-      { name: "background_blue" },
-      { name: "face" },
-      { name: "lady_hat" }
-    ],
-  },
-  {
-    growEditionSizeTo: 129, // 2
-    layersOrder: [
-      { name: "background_blue" },
-      { name: "face" },
-      { name: "glasses" }
-    ],
-  },
-  {
-    growEditionSizeTo: 130, // 1
-    layersOrder: [
-      { name: "background_blue" },
-      { name: "face" },
-      { name: "top_hat" }
-    ],
-  },
-  // Rainbow BG
-  {
-    growEditionSizeTo: 131, // 9
-    layersOrder: [
-      { name: "background_rainbow" },
-      { name: "face" }
-    ],
-  },
-  {
-    growEditionSizeTo: 135, // 4
-    layersOrder: [
-      { name: "background_rainbow" },
-      { name: "face" },
-      { name: "lady_hat" }
-    ],
-  },
-  {
-    growEditionSizeTo: 137, // 2
-    layersOrder: [
-      { name: "background_rainbow" },
-      { name: "face" },
-      { name: "glasses" }
-    ],
-  },
-  {
-    growEditionSizeTo: 138, // 1
-    layersOrder: [
-      { name: "background_rainbow" },
-      { name: "face" },
-      { name: "top_hat" }
+      { name: "Background" },
+      { name: "Eyeball" },
+      { name: "Eye color" },
+      { name: "Iris" },
+      { name: "Shine" },
+      { name: "Bottom lid" },
+      { name: "Top lid" },
     ],
   },
 ];
 
-const shuffleLayerConfigurations = true;
+const shuffleLayerConfigurations = false;
 
 const debugLogs = false;
 
 const format = {
   width: 512,
   height: 512,
+  smoothing: false,
+};
+
+const gif = {
+  export: false,
+  repeat: 0,
+  quality: 100,
+  delay: 500,
+};
+
+const text = {
+  only: false,
+  color: "#ffffff",
+  size: 20,
+  xGap: 40,
+  yGap: 40,
+  align: "left",
+  baseline: "top",
+  weight: "regular",
+  family: "Courier",
+  spacer: " => ",
+};
+
+const pixelFormat = {
+  ratio: 2 / 128,
 };
 
 const background = {
   generate: true,
   brightness: "80%",
+  static: false,
+  default: "#000000",
 };
 
 const extraMetadata = {};
@@ -194,8 +87,17 @@ const uniqueDnaTorrance = 10000;
 const preview = {
   thumbPerRow: 5,
   thumbWidth: 50,
-  imageRatio: format.width / format.height,
+  imageRatio: format.height / format.width,
   imageName: "preview.png",
+};
+
+const preview_gif = {
+  numberOfImages: 5,
+  order: "ASC", // ASC, DESC, MIXED
+  repeat: 0,
+  quality: 100,
+  delay: 500,
+  imageName: "preview.gif",
 };
 
 module.exports = {
@@ -210,4 +112,11 @@ module.exports = {
   shuffleLayerConfigurations,
   debugLogs,
   extraMetadata,
+  pixelFormat,
+  text,
+  namePrefix,
+  network,
+  solanaMetadata,
+  gif,
+  preview_gif,
 };

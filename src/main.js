@@ -1,17 +1,10 @@
-"use strict";
-
-const path = require("path");
-const isLocal = typeof process.pkg === "undefined";
-const basePath = isLocal ? process.cwd() : path.dirname(process.execPath);
+const basePath = process.cwd();
+const { NETWORK } = require(`${basePath}/constants/network.js`);
 const fs = require("fs");
-const sha1 = require(path.join(basePath, "/node_modules/sha1"));
-const { createCanvas, loadImage } = require(path.join(
-  basePath,
-  "/node_modules/canvas"
-));
-const buildDir = path.join(basePath, "/build");
-const layersDir = path.join(basePath, "/layers");
-console.log(path.join(basePath, "/src/config.js"));
+const sha1 = require(`${basePath}/node_modules/sha1`);
+const { createCanvas, loadImage } = require(`${basePath}/node_modules/canvas`);
+const buildDir = `${basePath}/build`;
+const layersDir = `${basePath}/layers`;
 const {
   format,
   baseUri,
@@ -23,21 +16,33 @@ const {
   shuffleLayerConfigurations,
   debugLogs,
   extraMetadata,
-} = require(path.join(basePath, "/src/config.js"));
+  text,
+  namePrefix,
+  network,
+  solanaMetadata,
+  gif,
+} = require(`${basePath}/src/config.js`);
 const canvas = createCanvas(format.width, format.height);
 const ctx = canvas.getContext("2d");
+ctx.imageSmoothingEnabled = format.smoothing;
 var metadataList = [];
 var attributesList = [];
 var dnaList = new Set();
-const DNA_DELIMITER = '-';
+const DNA_DELIMITER = "-";
+const HashlipsGiffer = require(`${basePath}/modules/HashlipsGiffer.js`);
+
+let hashlipsGiffer = null;
 
 const buildSetup = () => {
   if (fs.existsSync(buildDir)) {
     fs.rmdirSync(buildDir, { recursive: true });
   }
   fs.mkdirSync(buildDir);
-  fs.mkdirSync(path.join(buildDir, "/json"));
-  fs.mkdirSync(path.join(buildDir, "/images"));
+  fs.mkdirSync(`${buildDir}/json`);
+  fs.mkdirSync(`${buildDir}/images`);
+  if (gif.export) {
+    fs.mkdirSync(`${buildDir}/gifs`);
+  }
 };
 
 const getRarityWeight = (_str) => {
@@ -52,7 +57,8 @@ const getRarityWeight = (_str) => {
 };
 
 const cleanDna = (_str) => {
-  var dna = Number(_str.split(":").shift());
+  const withoutOptions = removeQueryStrings(_str);
+  var dna = Number(withoutOptions.split(":").shift());
   return dna;
 };
 
@@ -80,11 +86,23 @@ const getElements = (path) => {
 const layersSetup = (layersOrder) => {
   const layers = layersOrder.map((layerObj, index) => ({
     id: index,
-    name: layerObj.name,
     elements: getElements(`${layersDir}/${layerObj.name}/`),
-    blendMode:
-      layerObj["blend"] != undefined ? layerObj["blend"] : "source-over",
-    opacity: layerObj["opacity"] != undefined ? layerObj["opacity"] : 1,
+    name:
+      layerObj.options?.["displayName"] != undefined
+        ? layerObj.options?.["displayName"]
+        : layerObj.name,
+    blend:
+      layerObj.options?.["blend"] != undefined
+        ? layerObj.options?.["blend"]
+        : "source-over",
+    opacity:
+      layerObj.options?.["opacity"] != undefined
+        ? layerObj.options?.["opacity"]
+        : 1,
+    bypassDNA:
+      layerObj.options?.["bypassDNA"] !== undefined
+        ? layerObj.options?.["bypassDNA"]
+        : false,
   }));
   return layers;
 };
@@ -103,23 +121,49 @@ const genColor = () => {
 };
 
 const drawBackground = () => {
-  ctx.fillStyle = genColor();
+  ctx.fillStyle = background.static ? background.default : genColor();
   ctx.fillRect(0, 0, format.width, format.height);
 };
 
 const addMetadata = (_dna, _edition) => {
   let dateTime = Date.now();
   let tempMetadata = {
-    dna: sha1(_dna),
-    name: `#${_edition}`,
+    name: `${namePrefix} #${_edition}`,
     description: description,
     image: `${baseUri}/${_edition}.png`,
+    dna: sha1(_dna),
     edition: _edition,
     date: dateTime,
     ...extraMetadata,
     attributes: attributesList,
     compiler: "HashLips Art Engine",
   };
+  if (network == NETWORK.sol) {
+    tempMetadata = {
+      //Added metadata for solana
+      name: tempMetadata.name,
+      symbol: solanaMetadata.symbol,
+      description: tempMetadata.description,
+      //Added metadata for solana
+      seller_fee_basis_points: solanaMetadata.seller_fee_basis_points,
+      image: `image.png`,
+      //Added metadata for solana
+      external_url: solanaMetadata.external_url,
+      edition: _edition,
+      ...extraMetadata,
+      attributes: tempMetadata.attributes,
+      properties: {
+        files: [
+          {
+            uri: "image.png",
+            type: "image/png",
+          },
+        ],
+        category: "image",
+        creators: solanaMetadata.creators,
+      },
+    };
+  }
   metadataList.push(tempMetadata);
   attributesList = [];
 };
@@ -139,21 +183,43 @@ const loadLayerImg = async (_layer) => {
   });
 };
 
-const drawElement = (_renderObject) => {
+const addText = (_sig, x, y, size) => {
+  ctx.fillStyle = text.color;
+  ctx.font = `${text.weight} ${size}pt ${text.family}`;
+  ctx.textBaseline = text.baseline;
+  ctx.textAlign = text.align;
+  ctx.fillText(_sig, x, y);
+};
+
+const drawElement = (_renderObject, _index, _layersLen) => {
   ctx.globalAlpha = _renderObject.layer.opacity;
-  ctx.globalCompositeOperation = _renderObject.layer.blendMode;
-  ctx.drawImage(_renderObject.loadedImage, 0, 0, format.width, format.height);
+  ctx.globalCompositeOperation = _renderObject.layer.blend;
+  text.only
+    ? addText(
+        `${_renderObject.layer.name}${text.spacer}${_renderObject.layer.selectedElement.name}`,
+        text.xGap,
+        text.yGap * (_index + 1),
+        text.size
+      )
+    : ctx.drawImage(
+        _renderObject.loadedImage,
+        0,
+        0,
+        format.width,
+        format.height
+      );
+
   addAttributes(_renderObject);
 };
 
-const constructLayerToDna = (_dna = '', _layers = []) => {
+const constructLayerToDna = (_dna = "", _layers = []) => {
   let mappedDnaToLayers = _layers.map((layer, index) => {
     let selectedElement = layer.elements.find(
       (e) => e.id == cleanDna(_dna.split(DNA_DELIMITER)[index])
     );
     return {
       name: layer.name,
-      blendMode: layer.blendMode,
+      blend: layer.blend,
       opacity: layer.opacity,
       selectedElement: selectedElement,
     };
@@ -161,8 +227,49 @@ const constructLayerToDna = (_dna = '', _layers = []) => {
   return mappedDnaToLayers;
 };
 
-const isDnaUnique = (_DnaList = new Set(), _dna = '') => {
-  return !_DnaList.has(_dna);
+/**
+ * In some cases a DNA string may contain optional query parameters for options
+ * such as bypassing the DNA isUnique check, this function filters out those
+ * items without modifying the stored DNA.
+ *
+ * @param {String} _dna New DNA string
+ * @returns new DNA string with any items that should be filtered, removed.
+ */
+const filterDNAOptions = (_dna) => {
+  const dnaItems = _dna.split(DNA_DELIMITER);
+  const filteredDNA = dnaItems.filter((element) => {
+    const query = /(\?.*$)/;
+    const querystring = query.exec(element);
+    if (!querystring) {
+      return true;
+    }
+    const options = querystring[1].split("&").reduce((r, setting) => {
+      const keyPairs = setting.split("=");
+      return { ...r, [keyPairs[0]]: keyPairs[1] };
+    }, []);
+
+    return options.bypassDNA;
+  });
+
+  return filteredDNA.join(DNA_DELIMITER);
+};
+
+/**
+ * Cleaning function for DNA strings. When DNA strings include an option, it
+ * is added to the filename with a ?setting=value query string. It needs to be
+ * removed to properly access the file name before Drawing.
+ *
+ * @param {String} _dna The entire newDNA string
+ * @returns Cleaned DNA string without querystring parameters.
+ */
+const removeQueryStrings = (_dna) => {
+  const query = /(\?.*$)/;
+  return _dna.replace(query, "");
+};
+
+const isDnaUnique = (_DnaList = new Set(), _dna = "") => {
+  const _filteredDNA = filterDNAOptions(_dna);
+  return !_DnaList.has(_filteredDNA);
 };
 
 const createDna = (_layers) => {
@@ -179,7 +286,9 @@ const createDna = (_layers) => {
       random -= layer.elements[i].weight;
       if (random < 0) {
         return randNum.push(
-          `${layer.elements[i].id}:${layer.elements[i].filename}`
+          `${layer.elements[i].id}:${layer.elements[i].filename}${
+            layer.bypassDNA ? "?bypassDNA=true" : ""
+          }`
         );
       }
     }
@@ -224,7 +333,7 @@ const startCreating = async () => {
   let failedCount = 0;
   let abstractedIndexes = [];
   for (
-    let i = 1;
+    let i = network == NETWORK.sol ? 0 : 1;
     i <= layerConfigurations[layerConfigurations.length - 1].growEditionSizeTo;
     i++
   ) {
@@ -255,12 +364,33 @@ const startCreating = async () => {
         await Promise.all(loadedElements).then((renderObjectArray) => {
           debugLogs ? console.log("Clearing canvas") : null;
           ctx.clearRect(0, 0, format.width, format.height);
+          if (gif.export) {
+            hashlipsGiffer = new HashlipsGiffer(
+              canvas,
+              ctx,
+              `${buildDir}/gifs/${abstractedIndexes[0]}.gif`,
+              gif.repeat,
+              gif.quality,
+              gif.delay
+            );
+            hashlipsGiffer.start();
+          }
           if (background.generate) {
             drawBackground();
           }
-          renderObjectArray.forEach((renderObject) => {
-            drawElement(renderObject);
+          renderObjectArray.forEach((renderObject, index) => {
+            drawElement(
+              renderObject,
+              index,
+              layerConfigurations[layerConfigIndex].layersOrder.length
+            );
+            if (gif.export) {
+              hashlipsGiffer.add();
+            }
           });
+          if (gif.export) {
+            hashlipsGiffer.stop();
+          }
           debugLogs
             ? console.log("Editions left to create: ", abstractedIndexes)
             : null;
@@ -273,7 +403,7 @@ const startCreating = async () => {
             )}`
           );
         });
-        dnaList.add(newDna);
+        dnaList.add(filterDNAOptions(newDna));
         editionCount++;
         abstractedIndexes.shift();
       } else {
